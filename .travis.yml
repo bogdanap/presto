@@ -37,6 +37,7 @@ services:
   - docker
 
 install:
+  - unset _JAVA_OPTIONS
   - ./mvnw -v
   - |
     if [[ -v TEST_SPECIFIC_MODULES ]]; then
