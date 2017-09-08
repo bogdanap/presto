@@ -109,58 +109,5 @@ script:
       presto-hive-hadoop2/bin/run_on_docker.sh
     fi
 
-before_cache:
-  # Make the cache stable between builds by removing build output
-  - rm -rf $HOME/.m2/repository/com/facebook
 
-notifications:
-  slack:
-    secure: V5eyoGShxFoCcYJcp858vf/T6gC9KeMxL0C1EElcpZRcKBrIVZzvhek3HLHxZOxlghqnvNVsyDtU3u5orkEaAXeXj5c2dN+4XBsAB9oeN5MtQ0Z3VLAhZDqKIW1LzcXrq4DpzM0PkGhjfjum/P94/qFYk0UckPtB6a341AuYRo8=
 
-before_deploy:
-  - mkdir /tmp/artifacts
-  - cp -n presto-server/target/presto-server-*.tar.gz /tmp/artifacts
-  - cp -n presto-server-rpm/target/presto-server-rpm-*.x86_64.rpm /tmp/artifacts
-  - cp -n presto-product-tests/target/presto-product-tests-*-executable.jar /tmp/artifacts
-  - cp -n presto-jdbc/target/presto-jdbc-*.jar /tmp/artifacts
-  - cp -n presto-cli/target/presto-cli-*-executable.jar /tmp/artifacts
-  - echo $TRAVIS_COMMIT > /tmp/artifacts/git-revision.txt
-  - echo "<script>location='https://travis-ci.org/${TRAVIS_REPO_SLUG}/builds/${TRAVIS_BUILD_ID}'</script>"
-    > /tmp/artifacts/travis_build.html
-  - ls -lah /tmp/artifacts
-
-deploy:
-  on:
-    all_branches: true
-    condition: -v DEPLOY_S3_ACCESS_KEY && -v MAVEN_CHECKS
-  provider: s3
-  access_key_id: ${DEPLOY_S3_ACCESS_KEY}
-  secret_access_key: ${DEPLOY_S3_SECRET_KEY}
-  bucket: ${DEPLOY_S3_BUCKET}
-  skip_cleanup: true
-  local-dir: /tmp/artifacts
-  upload-dir: ${ARTIFACTS_UPLOAD_PATH}
-  acl: public_read
-
-after_script:
-- |
-  if [[ -v DEPLOY_S3_ACCESS_KEY ]]; then
-    sudo pip install awscli
-    export AWS_ACCESS_KEY_ID=${DEPLOY_S3_ACCESS_KEY}
-    export AWS_SECRET_ACCESS_KEY=${DEPLOY_S3_SECRET_KEY}
-
-    JOB_ARTIFACTS_URL_PREFIX=s3://${DEPLOY_S3_BUCKET}/${ARTIFACTS_UPLOAD_PATH}/travis_jobs/${TRAVIS_JOB_NUMBER}-run
-    JOB_RUN_ATTEMPTS=$( aws s3 ls ${JOB_ARTIFACTS_URL_PREFIX} | wc -l | tr -d '[:space:]' )
-    JOB_STATUS=$( [ "$TRAVIS_TEST_RESULT" == "0" ] && echo SUCCESS || echo FAILURE )
-
-    mkdir -p /tmp/job_artifacts/
-    rsync -av -m \
-      --include='**/' \
-      --include='**/surefire-reports/**.xml' \
-      --include='**/surefire-reports/emailable-report.html' \
-      --exclude='*' \
-      . /tmp/job_artifacts/
-    wget https://api.travis-ci.org/jobs/${TRAVIS_JOB_ID}/log.txt?deansi=true -O /tmp/job_artifacts/log.txt
-
-    aws s3 sync /tmp/job_artifacts ${JOB_ARTIFACTS_URL_PREFIX}_$((JOB_RUN_ATTEMPTS + 1))-${JOB_STATUS} --quiet
-  fi
